@@ -11,9 +11,12 @@
       so the web server keeps answering while a player is buzzed in
     * Built-in web server: big Red / Yellow / Blue / Green scoreboard,
       plus optional host controls (Correct / Wrong / Reopen / Reset)
-    * Player names per colour button, set from the web page (host bar -> Player names).
+    * Player names per colour button, set from the web page (host bar -> Players).
       Names are saved in flash (Preferences/NVS) so they survive a reboot.
       They are shown on the web page only – the LCD still shows the colours.
+    * Buzzer sound per player, chosen from the web page (host bar -> Players).
+      Pick any of files 1–30 on the DY player's SD card / flash; ▶ plays it on the
+      buzzer box so you can hear it first. Saved in flash with the names.
 
   Libraries (Arduino IDE, board package "esp32" by Espressif):
     * DYPlayer            https://github.com/SnijderC/dyplayer
@@ -89,8 +92,9 @@ const uint8_t lcdAddress = 0x27; // Try 0x3F if nothing shows up
 const uint8_t lcdColumns = 16;
 const uint8_t lcdRows = 2;
 
-// Sound effect file numbers
-const int sfxBuzzer[numPlayers] = {4, 4, 4, 4};
+// Sound effect file numbers (00001.mp3 = 1, 00002.mp3 = 2, ...)
+const uint8_t maxSoundFile     = 30; // highest file number offered on the web page
+const uint8_t defaultBuzzSound = 4;  // buzzer sound for players who haven't picked one
 const int sfxIncorrect = 2;
 const int sfxCorrect   = 3;
 const int sfxIntro     = 1;
@@ -105,6 +109,7 @@ bool    playerActive[numPlayers] = {true, true, true, true};
 int16_t playerScore[numPlayers]  = {0, 0, 0, 0};
 unsigned long buzzLockUntil = 0;
 String  playerNames[numPlayers]; // custom names; empty = show the colour name
+uint8_t playerSound[numPlayers];  // buzzer sound file per player (1..maxSoundFile)
 Preferences prefs;
 
 DY::Player player(&Serial2);
@@ -320,11 +325,21 @@ dialog h2{margin:0 0 .3rem;font-size:1.6rem;font-weight:900}
 dialog p{margin:0 0 1rem;color:var(--ink-soft);font-size:.95rem}
 .nrow{display:flex;align-items:center;gap:.7rem;margin-bottom:.7rem}
 .sw{flex:none;width:2.6rem;height:2.6rem;border-radius:50%;box-shadow:0 4px 0 rgba(0,0,0,.3),inset 0 -4px 0 rgba(0,0,0,.15)}
-.nrow input{
+.nrow input,.nrow select{
   flex:1;min-width:0;font:inherit;font-size:1.1rem;font-weight:700;padding:.65rem .9rem;
   border-radius:.9rem;border:2px solid var(--bar-line);background:var(--bar);color:var(--ink);
 }
-.nrow input:focus-visible{outline:3px solid var(--yel);outline-offset:1px}
+.nrow select{flex:none;width:6.6rem;padding:.65rem .5rem;font-size:1rem}
+.nrow select option{background:var(--bg);color:var(--ink)}
+.nrow input:focus-visible,.nrow select:focus-visible{outline:3px solid var(--yel);outline-offset:1px}
+.nrow .play{
+  flex:none;width:2.6rem;height:2.6rem;border-radius:50%;border:2px solid var(--bar-line);
+  background:var(--bar);color:var(--ink);font:inherit;font-size:1rem;cursor:pointer;padding:0
+}
+.nrow .play:focus-visible{outline:3px solid var(--yel);outline-offset:1px}
+.nrow .play.on{border-color:var(--yel)}
+@media (max-width:420px){.nrow{gap:.45rem}.sw{width:1.6rem;height:1.6rem}.nrow select{width:5.6rem}}
+.dlg-btns button{white-space:nowrap}
 .dlg-btns{display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem}
 .dlg-btns button{font:inherit;font-weight:800;font-size:1rem;border:0;border-radius:99px;padding:.7rem 1.3rem;cursor:pointer}
 #nSave{background:var(--grn-d);color:#fff}
@@ -358,22 +373,22 @@ dialog p{margin:0 0 1rem;color:var(--ink-soft);font-size:.95rem}
   <button id="bCorrect">✔ Correct</button>
   <button id="bWrong">✘ Wrong</button>
   <button id="bReopen">↻ Reopen buzzers</button>
-  <button id="bNames">✎ Player names</button>
+  <button id="bNames">✎ Players</button>
   <button id="bZero">Reset scores</button>
   <p class="hint" id="hint">Keys: C correct, W wrong, R reopen</p>
 </div>
 
 <dialog id="nameDlg" aria-labelledby="nTitle">
-  <h2 id="nTitle">Player names</h2>
-  <p>Leave a box empty to show the colour instead.</p>
-  <div class="nrow"><span class="sw" style="background:var(--red)"></span><input id="n0" maxlength="16" placeholder="Red" aria-label="Red player name" autocomplete="off"></div>
-  <div class="nrow"><span class="sw" style="background:var(--yel)"></span><input id="n1" maxlength="16" placeholder="Yellow" aria-label="Yellow player name" autocomplete="off"></div>
-  <div class="nrow"><span class="sw" style="background:var(--blu)"></span><input id="n2" maxlength="16" placeholder="Blue" aria-label="Blue player name" autocomplete="off"></div>
-  <div class="nrow"><span class="sw" style="background:var(--grn)"></span><input id="n3" maxlength="16" placeholder="Green" aria-label="Green player name" autocomplete="off"></div>
+  <h2 id="nTitle">Players</h2>
+  <p>Name and buzzer sound for each colour. Leave a name empty to show the colour. ▶ plays the sound on the buzzer box. Sounds 1–3 are also the intro, wrong and correct sounds.</p>
+  <div class="nrow"><span class="sw" style="background:var(--red)"></span><input id="n0" maxlength="16" placeholder="Red" aria-label="Red player name" autocomplete="off"><select id="s0" aria-label="Red buzzer sound"></select><button class="play" type="button" data-i="0" aria-label="Play Red buzzer sound" title="Play on the buzzer box">▶</button></div>
+  <div class="nrow"><span class="sw" style="background:var(--yel)"></span><input id="n1" maxlength="16" placeholder="Yellow" aria-label="Yellow player name" autocomplete="off"><select id="s1" aria-label="Yellow buzzer sound"></select><button class="play" type="button" data-i="1" aria-label="Play Yellow buzzer sound" title="Play on the buzzer box">▶</button></div>
+  <div class="nrow"><span class="sw" style="background:var(--blu)"></span><input id="n2" maxlength="16" placeholder="Blue" aria-label="Blue player name" autocomplete="off"><select id="s2" aria-label="Blue buzzer sound"></select><button class="play" type="button" data-i="2" aria-label="Play Blue buzzer sound" title="Play on the buzzer box">▶</button></div>
+  <div class="nrow"><span class="sw" style="background:var(--grn)"></span><input id="n3" maxlength="16" placeholder="Green" aria-label="Green player name" autocomplete="off"><select id="s3" aria-label="Green buzzer sound"></select><button class="play" type="button" data-i="3" aria-label="Play Green buzzer sound" title="Play on the buzzer box">▶</button></div>
   <div class="dlg-btns">
-    <button id="nClear" type="button">Clear all</button>
+    <button id="nClear" type="button">Clear names</button>
     <button id="nCancel" type="button">Cancel</button>
-    <button id="nSave" type="button">Save names</button>
+    <button id="nSave" type="button">Save</button>
   </div>
 </dialog>
 
@@ -502,7 +517,7 @@ dialog p{margin:0 0 1rem;color:var(--ink-soft);font-size:.95rem}
     demo=true; document.body.classList.add('demo');
     setConn('demo','Demo'); setHost(true);
     $('hint').textContent='Demo mode: tap a colour (or press 1–4) to buzz, then mark it. Keys: C correct, W wrong, R reopen';
-    apply({scores:[3,1,4,2],active:[true,true,true,true],buzzed:-1,names:['Mum','Dad','Ella','']});
+    apply({scores:[3,1,4,2],active:[true,true,true,true],buzzed:-1,names:['Mum','Dad','Ella',''],sounds:[4,5,6,7],maxSound:30});
   }
   function clone(s){return JSON.parse(JSON.stringify(s))}
   function demoAct(path,body){
@@ -518,10 +533,13 @@ dialog p{margin:0 0 1rem;color:var(--ink-soft);font-size:.95rem}
       s.scores[s.buzzed]--; s.active[s.buzzed]=false; s.buzzed=-1;
     } else if(path==='/reopen'){
       s.active=[true,true,true,true];
-    } else if(path==='/names'){
+    } else if(path==='/players'){
       s.names=[body.n0,body.n1,body.n2,body.n3];
+      s.sounds=[+body.s0,+body.s1,+body.s2,+body.s3];
+    } else if(path==='/play'){
+      sfx.buzz(); return; // no DY player in demo mode: beep in the browser if sound is on
     } else if(path==='/resetscores'){
-      s={scores:[0,0,0,0],active:[true,true,true,true],buzzed:-1,names:s.names};
+      s={scores:[0,0,0,0],active:[true,true,true,true],buzzed:-1,names:s.names,sounds:s.sounds,maxSound:s.maxSound};
       cur=s; // no score-change effects on a full reset
     }
     apply(s);
@@ -545,18 +563,42 @@ dialog p{margin:0 0 1rem;color:var(--ink-soft);font-size:.95rem}
     post('/resetscores');
   };
   var dlg=$('nameDlg');
+  function fillSounds(){
+    var max=(cur&&cur.maxSound)||30;
+    for(var i=0;i<4;i++){
+      var sel=$('s'+i), want=(cur&&cur.sounds&&cur.sounds[i])||4;
+      if(sel.options.length!==max){
+        sel.innerHTML='';
+        for(var f=1;f<=max;f++){
+          var o=document.createElement('option'); o.value=f;
+          o.textContent='♪ '+f;
+          sel.appendChild(o);
+        }
+      }
+      sel.value=String(want);
+    }
+  }
   $('bNames').onclick=function(){
     for(var i=0;i<4;i++) $('n'+i).value=(cur&&cur.names&&cur.names[i])||'';
+    fillSounds();
     if(dlg.showModal) dlg.showModal(); else dlg.setAttribute('open','');
     $('n0').focus();
   };
   function closeDlg(){ if(dlg.close) dlg.close(); else dlg.removeAttribute('open'); }
   $('nCancel').onclick=closeDlg;
   $('nClear').onclick=function(){ for(var i=0;i<4;i++) $('n'+i).value=''; $('n0').focus(); };
+  [].forEach.call(document.querySelectorAll('.nrow .play'),function(b){
+    b.onclick=function(){
+      var f=$('s'+b.dataset.i).value;
+      b.classList.add('on'); setTimeout(function(){b.classList.remove('on')},600);
+      if(demo){ demoAct('/play'); return; }
+      fetch('/play',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'f='+encodeURIComponent(f)}).catch(function(){});
+    };
+  });
   function saveNames(){
     var b={};
-    for(var i=0;i<4;i++) b['n'+i]=$('n'+i).value.trim().slice(0,16);
-    post('/names',b); closeDlg();
+    for(var i=0;i<4;i++){ b['n'+i]=$('n'+i).value.trim().slice(0,16); b['s'+i]=$('s'+i).value; }
+    post('/players',b); closeDlg();
   }
   $('nSave').onclick=saveNames;
   [0,1,2,3].forEach(function(i){
@@ -566,7 +608,7 @@ dialog p{margin:0 0 1rem;color:var(--ink-soft);font-size:.95rem}
   });
 
   document.addEventListener('keydown',function(e){
-    if(e.target.tagName==='INPUT' || dlg.open) return;
+    if(e.target.tagName==='INPUT' || e.target.tagName==='SELECT' || dlg.open) return;
     var k=e.key.toLowerCase();
     if(k==='c') post('/correct');
     else if(k==='w') post('/wrong');
@@ -631,9 +673,9 @@ void setup() {
   player.stop();
   player.playSpecified(sfxIntro);
 
-  // Saved player names
-  step("7 Loading saved names");
-  loadNames();
+  // Saved player names and buzzer sounds
+  step("7 Loading saved names and sounds");
+  loadPlayers();
 
   // Wi-Fi + web server
   step("8 Starting WiFi");
@@ -686,7 +728,7 @@ void loop() {
 // ---------------- GAME LOGIC ----------------
 void playerBuzzed(int i) {
   Serial.printf("Player %d (%s) buzzed in\n", i + 1, displayName(i).c_str());
-  player.playSpecified(sfxBuzzer[i]);
+  player.playSpecified(playerSound[i]);
   playerWhoBuzzed = i;
   for (int j = 0; j < numPlayers; j++) {
     digitalWrite(ledPins[j], j == i ? HIGH : LOW);
@@ -835,20 +877,29 @@ String cleanName(const String &in) {
   return out;
 }
 
-void loadNames() {
+// Keep a sound number in the range the DY player has files for
+uint8_t cleanSound(long n) {
+  return (n >= 1 && n <= maxSoundFile) ? (uint8_t)n : defaultBuzzSound;
+}
+
+void loadPlayers() {
   prefs.begin("buzzer", true); // read-only
   for (int i = 0; i < numPlayers; i++) {
     String key = "name" + String(i);
     playerNames[i] = cleanName(prefs.getString(key.c_str(), ""));
+    key = "snd" + String(i);
+    playerSound[i] = cleanSound(prefs.getUChar(key.c_str(), defaultBuzzSound));
   }
   prefs.end();
 }
 
-void saveNames() {
+void savePlayers() {
   prefs.begin("buzzer", false);
   for (int i = 0; i < numPlayers; i++) {
     String key = "name" + String(i);
     prefs.putString(key.c_str(), playerNames[i]);
+    key = "snd" + String(i);
+    prefs.putUChar(key.c_str(), playerSound[i]);
   }
   prefs.end();
 }
@@ -868,9 +919,37 @@ void sendState() {
     if (i) json += ',';
     json += '"'; json += playerNames[i]; json += '"'; // already cleaned, safe for JSON
   }
-  json += "]}";
+  json += "],\"sounds\":[";
+  for (int i = 0; i < numPlayers; i++) { if (i) json += ','; json += playerSound[i]; }
+  json += "],\"maxSound\":";
+  json += maxSoundFile;
+  json += "}";
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", json);
+}
+
+void handlePlayers() {
+  bool changed = false;
+  for (int i = 0; i < numPlayers; i++) {
+    String field = "n" + String(i);
+    if (server.hasArg(field)) {
+      String n = cleanName(server.arg(field));
+      if (n != playerNames[i]) { playerNames[i] = n; changed = true; }
+    }
+    field = "s" + String(i);
+    if (server.hasArg(field)) {
+      uint8_t snd = cleanSound(server.arg(field).toInt());
+      if (snd != playerSound[i]) { playerSound[i] = snd; changed = true; }
+    }
+  }
+  if (changed) {
+    savePlayers();
+    Serial.print("Players: ");
+    for (int i = 0; i < numPlayers; i++) {
+      Serial.printf("%s (sound %u)%s", displayName(i).c_str(), playerSound[i], i < numPlayers - 1 ? ", " : "\n");
+    }
+  }
+  sendState();
 }
 
 void setupWebServer() {
@@ -894,20 +973,17 @@ void setupWebServer() {
     updateScoreDisplay();
     sendState();
   });
-  // Set player names: POST form fields n0..n3 (empty = use the colour)
-  server.on("/names", HTTP_POST, []() {
-    bool changed = false;
-    for (int i = 0; i < numPlayers; i++) {
-      String field = "n" + String(i);
-      if (server.hasArg(field)) {
-        String n = cleanName(server.arg(field));
-        if (n != playerNames[i]) { playerNames[i] = n; changed = true; }
-      }
-    }
-    if (changed) {
-      saveNames();
-      Serial.print("Names: ");
-      for (int i = 0; i < numPlayers; i++) { Serial.print(displayName(i)); Serial.print(i < numPlayers - 1 ? ", " : "\n"); }
+  // Set player names and buzzer sounds: POST form fields n0..n3 (empty = use the colour)
+  // and s0..s3 (sound file numbers). /names is the older address, kept so it still works.
+  server.on("/players", HTTP_POST, handlePlayers);
+  server.on("/names",   HTTP_POST, handlePlayers);
+
+  // Play one sound file on the DY player so the host can hear it: POST f=<file number>
+  server.on("/play", HTTP_POST, []() {
+    long f = server.arg("f").toInt();
+    if (f >= 1 && f <= maxSoundFile) {
+      player.playSpecified((uint16_t)f);
+      Serial.printf("Preview sound %ld\n", f);
     }
     sendState();
   });

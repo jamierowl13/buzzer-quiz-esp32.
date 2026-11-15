@@ -20,6 +20,7 @@ If you edit `web/index.html`, paste it between `R"rawliteral(` and `)rawliteral"
 
 | Version | Changes |
 | --- | --- |
+| v4 – Buzzer sound per player | Each player's buzzer sound can be picked from files 1–30 on the web page (host bar → ✎ Players), with a ▶ button that plays it on the DY player first. Saved in ESP32 flash with the names. New `/players` and `/play` endpoints; `/state` returns `sounds` and `maxSound`. |
 | v3 – ESP32-S3 | Pins remapped for the ESP32-S3 (the old pins 26/32 are wired to the S3's flash chip and caused a watchdog reset loop; 22/23/25 don't exist on the S3). LCD I2C moved to SDA 8 / SCL 9. LCD top row now shows two-letter labels `Rd Yw Bl Gr`. Numbered startup checkpoints in the Serial Monitor and an LCD presence check, so a startup hang shows which step failed. Tested on real hardware. |
 | v2 – Player names | Custom name per colour button (up to 16 characters), set from the web page, saved in ESP32 flash and shared with every viewer. Web page shows the name large and the colour small. LCD unchanged. `playerNames` renamed to `colourNames`; new `/names` endpoint; `/state` returns names. |
 | v1 – ESP32 port + web scoreboard | Ported to ESP32: SoftwareSerial → hardware Serial2, pins remapped, non-blocking game loop. Wi-Fi (own access point or home network), mDNS, web scoreboard with four large colour buttons and host controls. LCD shows R/Y/B/G and the scoreboard address at startup. |
@@ -67,20 +68,36 @@ ESP32-S3 pins to avoid: **26–32** (wired to the flash chip; using them crashes
 
 Home Wi-Fi falls back to the ESP32's own network if it can't connect within 15 seconds.
 
+## Sound files
+
+The DY player plays files by number. Name them `00001.mp3`, `00002.mp3` … `00030.mp3` in the root of the SD card or flash.
+
+| File | Used for |
+| --- | --- |
+| 1 | Intro (at power-up) |
+| 2 | Wrong answer |
+| 3 | Correct answer |
+| 4 | Default buzzer sound |
+| 1–30 | Any of these can be picked as a player's buzzer sound on the web page |
+
+To offer more or fewer files, change `maxSoundFile` in the sketch.
+
 ## Web API
 
 | Endpoint | Method | Does |
 | --- | --- | --- |
 | `/` | GET | Scoreboard page |
-| `/state` | GET | JSON: `scores`, `active`, `buzzed` (−1 if nobody), `names` |
+| `/state` | GET | JSON: `scores`, `active`, `buzzed` (−1 if nobody), `names`, `sounds`, `maxSound` |
 | `/correct` | POST | +1 to the buzzed player, reopen all buzzers |
 | `/wrong` | POST | −1 to the buzzed player, lock them out |
 | `/reopen` | POST | Reopen all buzzers |
 | `/resetscores` | POST | Scores to 0, reopen buzzers (names kept) |
-| `/names` | POST | Form fields `n0`–`n3`; saved to flash |
+| `/players` | POST | Form fields `n0`–`n3` (names) and `s0`–`s3` (sound file numbers); saved to flash |
+| `/names` | POST | Older name for `/players`, still works |
+| `/play` | POST | Form field `f`: plays that sound file on the DY player (to try a sound) |
 
 ## Status
 
-Working on a real ESP32-S3 DevKitC-1 with buttons, LEDs, LCD and DY audio player.
+Working on a real ESP32-S3 DevKitC-1 with buttons, LEDs, LCD and DY audio player. The v4 per-player sound picker has been tested in a browser but not yet compiled or run on the ESP32.
 
 `buzzer-quiz-esp32.zip` in the repository root is an older download of the v2 (classic ESP32) files.
