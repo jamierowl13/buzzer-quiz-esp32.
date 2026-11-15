@@ -1,12 +1,12 @@
 /*
-  Buzzer quiz game – ESP32 version with a live web scoreboard
-  ------------------------------------------------------------
+  Buzzer quiz game – ESP32-S3 version with a live web scoreboard
+  ---------------------------------------------------------------
   Ported from buzzer_game_lcdV2_Ver0.ino (Arduino Uno/Nano).
 
-  What changed for the ESP32:
+  What changed for the ESP32-S3:
     * SoftwareSerial  -> HardwareSerial Serial2 (GPIO16 RX / GPIO17 TX) for the DY audio player
-    * Analog pins A0–A5 -> ESP32 GPIOs (see the pin table below)
-    * I2C LCD now on the ESP32 default I2C pins (SDA 21 / SCL 22)
+    * Analog pins A0–A5 -> ESP32-S3 GPIOs (see the pin table below)
+    * I2C LCD now on the ESP32-S3 default I2C pins (SDA 8 / SCL 9)
     * The game loop is now non-blocking (no while() waiting for the host),
       so the web server keeps answering while a player is buzzed in
     * Built-in web server: big Red / Yellow / Blue / Green scoreboard,
@@ -23,23 +23,25 @@
   Players / colours:
     Player 1 = Red, Player 2 = Yellow, Player 3 = Blue, Player 4 = Green
 
-  ESP32 wiring
+  ESP32-S3 wiring
     Function          GPIO   Notes
-    Red button         32    to GND (internal pull-up)
-    Yellow button      33    to GND
-    Blue button        25    to GND
-    Green button       26    to GND
-    Red LED            18    via ~220 Ω resistor to GND
-    Yellow LED         19
-    Blue LED           23
-    Green LED          27
+    Red button          4    to GND (internal pull-up)
+    Yellow button       5    to GND
+    Blue button         6    to GND
+    Green button        7    to GND
+    Red LED            10    via ~220 Ω resistor to GND
+    Yellow LED         11
+    Blue LED           12
+    Green LED          15
     Host "Correct"     13    to GND
     Host "Wrong"       14    to GND
-    LCD SDA            21
-    LCD SCL            22
+    LCD SDA             8
+    LCD SCL             9
     DY player TX ->    16    (ESP32 RX2)
     DY player RX <-    17    (ESP32 TX2)
-  Avoid GPIO 34–39 for buttons (no internal pull-ups) and GPIO 0/2/12/15 (boot strapping pins).
+  ESP32-S3: never use GPIO 26–32 (connected to the flash chip – using them crashes the board),
+  avoid 33–37 (PSRAM on many boards), 19/20 (USB), 0/3/45/46 (boot strapping pins)
+  and 38/48 (onboard RGB LED on many boards). GPIO 22–25 do not exist on the S3.
 */
 
 // INCLUDES
@@ -64,10 +66,10 @@ const char* AP_SSID       = "Buzzer-Game";
 const char* AP_PASS       = "letsplay123";   // must be at least 8 characters
 const char* MDNS_NAME     = "buzzer";        // -> http://buzzer.local
 
-// CONSTANTS
+// CONSTANTS (ESP32-S3 pins)
 const int numPlayers = 4;
-const int buttonPins[numPlayers] = {32, 33, 25, 26}; // Red, Yellow, Blue, Green
-const int ledPins[numPlayers]    = {18, 19, 23, 27}; // Red, Yellow, Blue, Green
+const int buttonPins[numPlayers] = {4, 5, 6, 7};      // Red, Yellow, Blue, Green
+const int ledPins[numPlayers]    = {10, 11, 12, 15};  // Red, Yellow, Blue, Green
 const char* colourNames[numPlayers] = {"Red", "Yellow", "Blue", "Green"};
 const size_t maxNameBytes = 24; // up to 16 characters typed on the web page (more room for accented letters / emoji)
 
@@ -77,6 +79,10 @@ const int wrongButtonPin   = 14; // Host button: wrong answer
 // DY player serial pins (Serial2)
 const int dyRxPin = 16;
 const int dyTxPin = 17;
+
+// LCD I2C pins (ESP32-S3 defaults)
+const int lcdSdaPin = 8;
+const int lcdSclPin = 9;
 
 // LCD settings
 const uint8_t lcdAddress = 0x27; // Try 0x3F if nothing shows up
@@ -577,12 +583,28 @@ dialog p{margin:0 0 1rem;color:var(--ink-soft);font-size:.95rem}
 )rawliteral";
 
 // ---------------- SETUP ----------------
+// Prints a numbered checkpoint and waits until it has actually been sent,
+// so if the board resets, the last line in the Serial Monitor shows where it stopped.
+void step(const char* msg) {
+  Serial.printf("[%lu ms] %s\n", millis(), msg);
+  Serial.flush();
+  delay(20);
+}
+
 void setup() {
   Serial.begin(115200);
+  delay(1500); // give the USB serial port time to connect so early messages aren't lost
   Serial.println(__FILE__ " " __DATE__);
 
   // LCD
-  Wire.begin(21, 22);
+  step("1 Wire.begin (I2C on SDA 8 / SCL 9)");
+  Wire.begin(lcdSdaPin, lcdSclPin);
+  Wire.setTimeOut(50);
+  step("2 Checking for LCD on I2C");
+  Wire.beginTransmission(lcdAddress);
+  if (Wire.endTransmission() == 0) Serial.printf("   LCD found at 0x%02X\n", lcdAddress);
+  else Serial.printf("   WARNING: no LCD at 0x%02X (check wiring / try 0x3F)\n", lcdAddress);
+  step("3 lcd.init");
   lcd.init();
   lcd.backlight();
   lcd.setCursor(0, 0);
@@ -591,6 +613,7 @@ void setup() {
   lcd.print("Starting WiFi...");
 
   // Pins
+  step("4 Setting up button and LED pins");
   for (int i = 0; i < numPlayers; i++) {
     pinMode(buttonPins[i], INPUT_PULLUP);
     pinMode(ledPins[i], OUTPUT);
@@ -599,7 +622,9 @@ void setup() {
   pinMode(wrongButtonPin, INPUT_PULLUP);
 
   // DY audio player on hardware Serial2
+  step("5 Serial2.begin for DY player (RX 16 / TX 17)");
   Serial2.begin(9600, SERIAL_8N1, dyRxPin, dyTxPin);
+  step("6 DY player setup + intro sound");
   player.begin();
   player.setCycleMode(DY::PlayMode::OneOff);
   player.setVolume(25); // 0-30
@@ -607,13 +632,17 @@ void setup() {
   player.playSpecified(sfxIntro);
 
   // Saved player names
+  step("7 Loading saved names");
   loadNames();
 
   // Wi-Fi + web server
+  step("8 Starting WiFi");
   startWiFi();
+  step("9 Starting web server");
   setupWebServer();
 
   updateScoreDisplay();
+  step("10 Setup finished - game ready");
 }
 
 // ---------------- LOOP (non-blocking) ----------------
@@ -710,11 +739,11 @@ void updateScoreDisplay() {
   Serial.println();
 
   // LCD: 4 characters per player
-  // Line 1: "R   Y   B   G   "   Line 2: scores
-  const char initials[numPlayers] = {'R', 'Y', 'B', 'G'};
+  // Line 1: "Rd  Yw  Bl  Gr  "   Line 2: scores
+  const char* initials[numPlayers] = {"Rd", "Yw", "Bl", "Gr"}; // up to 4 characters each
   char line[lcdColumns + 1];
   for (int i = 0; i < numPlayers; i++) {
-    snprintf(line + i * 4, 5, "%c   ", initials[i]);
+    snprintf(line + i * 4, 5, "%-4s", initials[i]); // text padded to 4 columns
   }
   lcd.setCursor(0, 0);
   lcd.print(line);
@@ -754,12 +783,15 @@ void startWiFi() {
   }
 
   if (!joined) {
+    step("8a WiFi.mode(WIFI_AP)");
     WiFi.mode(WIFI_AP);
+    step("8b WiFi.softAP");
     WiFi.softAP(AP_SSID, AP_PASS);
     ip = WiFi.softAPIP();
     Serial.printf("Access point \"%s\" started\n", AP_SSID);
   }
 
+  step("8c Starting mDNS");
   if (MDNS.begin(MDNS_NAME)) {
     MDNS.addService("http", "tcp", 80);
   }
