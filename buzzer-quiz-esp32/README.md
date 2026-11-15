@@ -12,6 +12,7 @@ Live demo of the web page (simulated, no hardware needed): https://claude.ai/art
 | `web/index.html` | The web page on its own, for editing |
 | `web/demo.html` | Demo copy that always runs the built-in simulator |
 | `original/buzzer_game_lcdV2_Ver0.ino` | Original Arduino Uno/Nano sketch (v0) |
+| `docs/ESP32-S3_Buzzer_Quiz_Wiring.docx` | Printable wiring guide: every connection on the ESP32-S3 terminal adapter |
 
 If you edit `web/index.html`, paste it between `R"rawliteral(` and `)rawliteral"` in the sketch.
 
@@ -26,7 +27,7 @@ If you edit `web/index.html`, paste it between `R"rawliteral(` and `)rawliteral"
 
 ## Wiring (ESP32-S3)
 
-Made for the 44-pin ESP32-S3 DevKitC-1 (N8R2 / N16R8). All the pins used are on one side of the board.
+Made for the 44-pin ESP32-S3 DevKitC-1 (N8R2 / N16R8). All the pins used are on one side of the board. For a printable version with the full terminal-strip layout, see [`docs/ESP32-S3_Buzzer_Quiz_Wiring.docx`](docs/ESP32-S3_Buzzer_Quiz_Wiring.docx).
 
 Buttons go between the GPIO and GND (internal pull-ups). LEDs need a ~220 Ω resistor to GND.
 
