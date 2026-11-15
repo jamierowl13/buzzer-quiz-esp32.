@@ -4,6 +4,8 @@ A four-player buzzer quiz game for the ESP32-S3 with a live web scoreboard. Play
 
 Live demo of the web page (simulated, no hardware needed): https://claude.ai/artifact/56aD6ate3GgspzZPnUsHhi
 
+New to the game? Read the [instruction manual](docs/Buzz_Quiz_Game_Instruction_Manual.pdf).
+
 ## Repository layout
 
 | Path | What it is |
@@ -13,6 +15,7 @@ Live demo of the web page (simulated, no hardware needed): https://claude.ai/art
 | `web/demo.html` | Demo copy that always runs the built-in simulator |
 | `original/buzzer_game_lcdV2_Ver0.ino` | Original Arduino Uno/Nano sketch (v0) |
 | `docs/ESP32-S3_Buzzer_Quiz_Wiring.docx` | Printable wiring guide: every connection on the ESP32-S3 terminal adapter |
+| `docs/Buzz_Quiz_Game_Instruction_Manual.pdf` (and `.docx`) | How to set up and play the game: rounds, scoring, host controls, troubleshooting |
 
 If you edit `web/index.html`, paste it between `R"rawliteral(` and `)rawliteral"` in the sketch.
 
